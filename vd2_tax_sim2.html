@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>VD2 Steuersystem Sim</title>
+    <style>
+        body { margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; background: #111; color: #eee; height: 100vh; overflow: hidden; user-select: none; }
+        
+        #game-container { position: relative; width: 100vw; height: 100vh; background: #000; }
+        #world-map { width: 100%; height: 100%; object-fit: fill; opacity: 0.9; position: absolute; top: 0; left: 0; }
+        #connections { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+        
+        polyline { 
+            fill: none; stroke: rgba(255, 255, 255, 0.4); 
+            stroke-width: 2px; vector-effect: non-scaling-stroke; 
+            stroke-linejoin: round; stroke-linecap: round; transition: all 0.5s;
+        }
+        polyline.active {
+            stroke: #0f0; stroke-width: 4px; filter: drop-shadow(0 0 8px #0f0);
+            stroke-dasharray: 10; animation: dash 0.8s linear infinite;
+        }
+        @keyframes dash { to { stroke-dashoffset: -20; } }
+
+        .castle-btn {
+            position: absolute; width: 5.5%; height: 7.5%;       
+            font-size: 0.85vw; background: rgba(255, 0, 0, 0.2);
+            border: 0.15vw solid rgba(255, 50, 50, 0.9); border-radius: 8px;
+            cursor: pointer; z-index: 20; display: flex; align-items: center; justify-content: center;
+            text-align: center; line-height: 1.1; font-weight: bold;
+            text-shadow: 1px 1px 2px black; color: white;
+            box-shadow: 0 0 1vw rgba(0,0,0,0.8); transform: translate(-50%, -50%); 
+            transition: all 0.2s;
+        }
+        .castle-btn:hover { transform: translate(-50%, -50%) scale(1.1); background: rgba(255,0,0,0.4); }
+        .castle-btn.owned { background: rgba(0, 255, 0, 0.2); border-color: rgba(50, 255, 50, 0.9); color: #afa; }
+        .castle-btn.owned:hover { background: rgba(0, 255, 0, 0.4); }
+
+        #gold-pile-container { position: absolute; top: 44%; left: 57%; width: 0; height: 0; z-index: 25; pointer-events: none; }
+        .gold-item {
+            position: absolute; width: 2.5vw; height: auto; left: 0; top: 0; 
+            transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            filter: drop-shadow(2px 2px 3px rgba(0,0,0,0.7));
+        }
+
+        #total-wealth { display: block; font-size: 1.8vw; color: gold; font-weight: bold; text-shadow: 0 0 5px orange; }
+        #last-income { display: block; font-size: 1vw; color: #afa; margin-top: 5px; opacity: 0; transition: opacity 0.5s; }
+        #reset-btn {
+            background: #a33; border: 1px solid #f55; color: white;
+            padding: 5px 15px; border-radius: 5px; cursor: pointer; margin-top: 5px; font-size: 0.8vw;
+        }
+        #reset-btn:hover { background: #d44; }
+
+        #settings-panel {
+            position: absolute; top: 20px; left: 20px; width: 250px;
+            background: rgba(20, 20, 30, 0.9); border: 1px solid #555; border-radius: 8px;
+            padding: 15px; z-index: 100; color: #ccc;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5); backdrop-filter: blur(5px);
+        }
+        #settings-panel h3 { margin: 0 0 10px 0; color: #f0c040; border-bottom: 1px solid #444; padding-bottom: 5px; }
+
+        /* SKILLS PANEL - TRANSPARENT */
+        #skills-panel {
+            position: absolute; 
+            top: 35px; right: 67px; /* UPDATED */
+            width: 280px;
+            background: none; 
+            padding: 10px; z-index: 100; color: #ccc;
+        }
+
+        /* CENTER HUD - Position Update */
+        #center-hud {
+            position: absolute; 
+            top: 52%; left: 65%; /* UPDATED */
+            transform: translate(-50%, 0);
+            text-align: center; z-index: 30; background: rgba(0,0,0,0.5);
+            padding: 10px; border-radius: 10px; border: 1px solid #444; backdrop-filter: blur(2px);
+        }
+
+        .setting-block { margin-bottom: 15px; }
+        .setting-label { display: block; font-size: 12px; margin-bottom: 5px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; text-shadow: 1px 1px 2px black; }
+        
+        .btn-group { display: flex; border: 1px solid rgba(255,255,255,0.3); border-radius: 5px; overflow: hidden; box-shadow: 0 0 5px rgba(0,0,0,0.5); }
+        .btn-option {
+            flex: 1; padding: 6px 0; text-align: center; cursor: pointer;
+            background: rgba(0,0,0,0.6); color: #bbb; font-size: 11px; transition: all 0.2s;
+            border-right: 1px solid rgba(255,255,255,0.1);
+        }
+        .btn-option:last-child { border-right: none; }
+        .btn-option:hover { background: rgba(255,255,255,0.1); color: #fff; }
+        .btn-option.active { 
+            background: rgba(240, 192, 64, 0.9); color: #111; font-weight: bold; 
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.2); 
+        }
+
+        input[type=range] { width: 100%; background: transparent; cursor: pointer; }
+        
+        .village-slider-container {
+            position: absolute; width: 120px; background: rgba(0,0,0,0.7);
+            padding: 5px; border-radius: 5px; border: 1px solid #444;
+            z-index: 40; transform: translate(-50%, 20px); text-align: center;
+        }
+        .pop-label { font-size: 10px; color: #ddd; display: flex; justify-content: space-between; }
+        .pop-val { color: #f0c040; font-weight: bold; }
+        .mini-slider { width: 100%; height: 4px; margin: 5px 0; -webkit-appearance: none; background: #555; border-radius: 2px; }
+        .mini-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 10px; height: 10px; background: #f0c040; border-radius: 50%; cursor: pointer; }
+
+        #tick-bar-container {
+            position: absolute; bottom: 10px; left: 5%; width: 90%; height: 20px;
+            background: rgba(10,10,10,0.8); border: 1px solid #444; border-radius: 4px;
+            overflow: hidden; z-index: 50; box-shadow: 0 0 10px rgba(0,0,0,0.5);
+        }
+        #tick-progress {
+            height: 100%; width: 0%;
+            background: linear-gradient(90deg, #333, #f0c040); transition: width 0.1s linear;
+        }
+        #tick-text {
+            position: absolute; top: 0; left: 0; width: 100%; text-align: center;
+            line-height: 20px; font-size: 11px; color: #aaa; letter-spacing: 2px;
+        }
+
+        .floating-text {
+            position: absolute; color: gold; font-weight: bold; font-size: 1.5vw;
+            text-shadow: 2px 2px 0 #000; pointer-events: none;
+            animation: floatUp 1.5s ease-out forwards; z-index: 60; transform: translate(-50%, -50%);
+        }
+        @keyframes floatUp { 0% { transform: translate(-50%, -50%); opacity: 1; } 100% { transform: translate(-50%, -100px); opacity: 0; } }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <img id="world-map" src="Weltkarte-mit-Dorfern-und-Schlossern.jpg" alt="Map">
+    
+    <div id="settings-panel">
+        <h3>Einstellungen</h3>
+        <div class="setting-block">
+            <span class="setting-label">Unruhe: <span id="malus-disp" style="color:#f55">0</span></span>
+            <input type="range" min="0" max="10" value="0" oninput="updateMalus(this.value)">
+            <div id="malus-text" style="font-size:10px; color:#aaa; margin-top:2px;">Friedlich</div>
+        </div>
+        <div class="setting-block">
+            <span class="setting-label">Speed: <span id="speed-disp">50</span>ms</span>
+            <input type="range" min="10" max="200" value="50" oninput="updateSpeed(this.value)">
+        </div>
+    </div>
+
+    <div id="skills-panel">
+        <div class="setting-block">
+            <span class="setting-label" style="text-align: right;">Schwierigkeit</span>
+            <div class="btn-group" id="diff-group">
+                <div class="btn-option" onclick="setDiff('easy', this)">LEICHT (x9)</div>
+                <div class="btn-option active" onclick="setDiff('normal', this)">NORMAL (x8)</div>
+                <div class="btn-option" onclick="setDiff('hard', this)">SCHWER (x6)</div>
+            </div>
+        </div>
+        <div class="setting-block">
+            <span class="setting-label" style="text-align: right;">Schatzmeister Skill</span>
+            <div class="btn-group" id="skill-group">
+                <div class="btn-option active" onclick="setSkill(0, this)">0</div>
+                <div class="btn-option" onclick="setSkill(1, this)">I</div>
+                <div class="btn-option" onclick="setSkill(2, this)">II</div>
+                <div class="btn-option" onclick="setSkill(3, this)">III</div>
+            </div>
+        </div>
+    </div>
+
+    <svg id="connections" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+    <div id="castle-layer"></div>
+    <div id="village-layer"></div>
+
+    <div id="gold-pile-container"></div>
+    <div id="center-hud">
+        <span id="total-wealth">0</span>
+        <span id="last-income">+0</span>
+        <button id="reset-btn" onclick="resetSim()">RESET</button>
+    </div>
+
+    <div id="tick-bar-container">
+        <div id="tick-progress"></div>
+        <div id="tick-text">0 / 130</div>
+    </div>
+</div>
+
+<audio id="sfx-coin" src="coin.mp3"></audio>
+
+<script>
+    const ASGAR_X = 57.7; const ASGAR_Y = 59.4;
+    const castles = [
+        // Genos: left 28%, top 27%
+        { id: 131, popVar: 618, initPop: 18, name: "Genos\nHoran",          x: 33.3, y: 18.2, vx: 28.0, vy: 27.0 }, 
+        
+        // Ordun: left 19% top 42.5%
+        { id: 130, popVar: 621, initPop: 17, name: "Ordun\nArdos",          x: 17.7, y: 33.4, vx: 19.0, vy: 42.5 }, 
+        
+        // Mesdor: Perfekt (bleibt 25.0, 66.0)
+        { id: 129, popVar: 619, initPop: 22, name: "Mesdor\nWharis",        x: 36.0, y: 60.0, vx: 25.0, vy: 66.0 }, 
+        
+        // Jhalum: left 31.5%, top 75%
+        { id: 135, popVar: 626, initPop: 33, name: "Jhalum\nFaryn",         x: 37.6, y: 89.0, vx: 31.5, vy: 75.0 }, 
+        
+        // Syrahs: left 50% top 65%
+        { id: 133, popVar: 622, initPop: 20, name: "Syrahs\nAsgars Schloss",x: 57.7, y: 59.4, vx: 50.0, vy: 65.0 }, 
+        
+        // Mirana: left 65% top 82%
+        { id: 127, popVar: 625, initPop: 26, name: "Mirana\nJohlar",        x: 59.4, y: 78.4, vx: 65.0, vy: 82.0 }, 
+        
+        // Ghardon: left 61.5% top 22%
+        { id: 128, popVar: 623, initPop: 18, name: "Ghardon\nRakar",        x: 68.3, y: 28.7, vx: 61.5, vy: 22.0 }, 
+        
+        // Ildan: left 77% top 42%
+        { id: 134, popVar: 624, initPop: 20, name: "Ildan\nRonom",          x: 82.1, y: 34.6, vx: 77.0, vy: 42.0 }, 
+        
+        // Erena: left 86% top kann so bleiben (72.0)
+        { id: 132, popVar: 620, initPop: 34, name: "Erena\nZharas",         x: 88.0, y: 63.0, vx: 86.0, vy: 72.0 }, 
+    ];
+    
+    let state = {
+        goldImSchloss: 0, timer: 0, goldFaktor: 8, difficulty: 'normal',
+        ownedCastles: {}, population: {}, malus: 0, skill: 0, goldPiles: 0
+    };
+    
+    let intervalId = null; let tickSpeed = 50;
+
+    function init() {
+        const castleLayer = document.getElementById('castle-layer');
+        const villageLayer = document.getElementById('village-layer');
+        const connections = document.getElementById('connections');
+        
+        castles.forEach(c => {
+            state.ownedCastles[c.id] = false;
+            state.population[c.popVar] = c.initPop; 
+            
+            const btn = document.createElement('div');
+            btn.className = 'castle-btn';
+            btn.style.left = c.x + '%'; btn.style.top = c.y + '%';
+            btn.innerText = c.name; btn.id = 'btn-' + c.id;
+            btn.onclick = () => toggleCastle(c.id, btn);
+            castleLayer.appendChild(btn);
+            
+            const sliderDiv = document.createElement('div');
+            sliderDiv.className = 'village-slider-container';
+            sliderDiv.style.left = c.vx + '%'; sliderDiv.style.top = c.vy + '%';
+            
+            // FIX: Max Wert ist jetzt initPop (kein künstliches Wachstum mehr)
+            const maxVal = c.initPop; 
+            
+            sliderDiv.innerHTML = `
+                <div class="pop-label">
+                    <span>${c.name.split('\n')[0]}</span><span id="disp-${c.popVar}" class="pop-val">${c.initPop}</span>
+                </div>
+                <input type="range" class="mini-slider" min="0" max="${maxVal}" value="${c.initPop}" oninput="updatePop(${c.popVar}, this.value)">
+            `;
+            villageLayer.appendChild(sliderDiv);
+            
+            const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+            poly.id = 'line-' + c.id;
+            poly.setAttribute('points', calculatePath(c.x, c.y, c.vx, c.vy));
+            connections.appendChild(poly);
+        });
+        startLoop();
+    }
+    
+    function setDiff(val, btn) {
+        state.difficulty = val;
+        if(val === 'easy') state.goldFaktor = 9;
+        else if(val === 'normal') state.goldFaktor = 8;
+        else state.goldFaktor = 6;
+        const group = document.getElementById('diff-group');
+        group.querySelectorAll('.btn-option').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    }
+    
+    function setSkill(val, btn) {
+        state.skill = val;
+        const group = document.getElementById('skill-group');
+        group.querySelectorAll('.btn-option').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    }
+
+    function updateConnection(id) {
+        const c = castles.find(obj => obj.id === id);
+        const poly = document.getElementById('line-' + c.id);
+        if (state.ownedCastles[id]) {
+            if (c.id === 133) { poly.style.display = 'none'; return; }
+            poly.setAttribute('points', calculatePath(c.x, c.y, ASGAR_X, ASGAR_Y));
+            poly.classList.add('active'); poly.style.display = 'block';
+        } else {
+            poly.setAttribute('points', calculatePath(c.x, c.y, c.vx, c.vy));
+            poly.classList.remove('active'); poly.style.display = 'block';
+        }
+    }
+
+    function calculatePath(x1, y1, x2, y2) {
+        let dx = x2 - x1; let dy = y2 - y1;
+        let points = []; points.push(`${x1},${y1}`); 
+        const adx = Math.abs(dx); const ady = Math.abs(dy);
+        let sx = (dx > 0) ? 1 : -1; let sy = (dy > 0) ? 1 : -1;
+        if (adx > ady) {
+            const straight = adx - ady; points.push(`${x1 + (straight * sx)},${y1}`);
+        } else {
+            const straight = ady - adx; points.push(`${x1},${y1 + (straight * sy)}`);
+        }
+        points.push(`${x2},${y2}`); return points.join(" ");
+    }
+    
+    function toggleCastle(id, btn) {
+        state.ownedCastles[id] = !state.ownedCastles[id];
+        if(state.ownedCastles[id]) btn.classList.add('owned'); else btn.classList.remove('owned');
+        updateConnection(id);
+    }
+
+    function updatePop(varId, val) {
+        state.population[varId] = parseInt(val);
+        document.getElementById(`disp-${varId}`).innerText = val;
+    }
+    
+    function updateSpeed(val) {
+        tickSpeed = parseInt(val);
+        document.getElementById('speed-disp').innerText = val;
+        startLoop();
+    }
+    
+    function updateMalus(val) {
+        state.malus = parseInt(val);
+        document.getElementById('malus-disp').innerText = val;
+        const txt = document.getElementById('malus-text');
+        const percent = 100 - (state.malus * 10);
+        if (state.malus >= 9) txt.innerText = "BUG: 100% Einnahmen trotz Chaos!";
+        else if (percent < 20) txt.innerText = "Chaos! (0% Einnahmen)";
+        else txt.innerText = `Einnahmen auf ${percent}% reduziert.`;
+    }
+
+    function resetSim() {
+        state.goldImSchloss = 0; state.timer = 0; state.goldPiles = 0;
+        document.getElementById('total-wealth').innerText = 0;
+        document.getElementById('last-income').innerText = "+0";
+        document.getElementById('last-income').style.opacity = 0;
+        document.getElementById('tick-progress').style.width = '0%';
+        document.getElementById('gold-pile-container').innerHTML = '';
+    }
+
+    function startLoop() {
+        if(intervalId) clearInterval(intervalId);
+        intervalId = setInterval(tick, tickSpeed);
+    }
+    
+    function tick() {
+        state.timer++;
+        const progress = Math.min(100, (state.timer / 130) * 100);
+        document.getElementById('tick-progress').style.width = progress + '%';
+        document.getElementById('tick-text').innerText = `${state.timer} / 130`;
+        if (state.timer >= 130) { calculateTaxes(); state.timer = 0; }
+    }
+    
+    function calculateTaxes() {
+        let cycleGold = 0;
+        castles.forEach(c => {
+            if(state.ownedCastles[c.id]) {
+                const income = state.goldFaktor * state.population[c.popVar];
+                cycleGold += income;
+                if(income > 0) spawnFloatingText(`+${income}`, c.x, c.y, 1.0); 
+            }
+        });
+        
+        if (state.skill === 1) cycleGold = Math.floor(cycleGold * 1.10);
+        if (state.skill === 2) cycleGold = Math.floor(cycleGold * 1.25);
+        if (state.skill === 3) cycleGold = Math.floor(cycleGold * 1.50);
+        
+        const malusPercent = 100 - (state.malus * 10);
+        if (malusPercent >= 20) cycleGold = Math.floor((cycleGold * malusPercent) / 100);
+        
+        state.goldImSchloss += cycleGold;
+        
+        document.getElementById('total-wealth').innerText = state.goldImSchloss.toLocaleString();
+        const lastIncEl = document.getElementById('last-income');
+        lastIncEl.innerText = "+" + cycleGold; lastIncEl.style.opacity = 1;
+        
+        if(cycleGold > 0) {
+            const audio = document.getElementById('sfx-coin');
+            if(audio) { const c = audio.cloneNode(); c.volume = 0.5; c.play().catch(e=>{}); }
+            spawnFloatingText(`+${cycleGold}`, 57, 59, 2.0, 'gold');
+            updateGoldPile();
+        }
+    }
+    
+    function updateGoldPile() {
+        let targetPiles = 0;
+        if (state.goldImSchloss > 0) targetPiles = Math.ceil(state.goldImSchloss / 1000);
+        const container = document.getElementById('gold-pile-container');
+        const COLS = 6; const X_OFFSET = 2.0; const Y_OFFSET = 1.5; 
+        const START_X = -(COLS * X_OFFSET) / 2;
+        
+        while (state.goldPiles < targetPiles && state.goldPiles < 100) {
+            const index = state.goldPiles; state.goldPiles++;
+            const img = document.createElement('img'); img.src = 'gold_icon.png'; 
+            img.className = 'gold-item';
+            const row = Math.floor(index / COLS); const col = index % COLS;
+            img.style.left = (START_X + (col * X_OFFSET)) + 'vw';
+            img.style.top = (0 - (row * Y_OFFSET)) + 'vw';
+            img.style.transform = 'scale(0)'; container.appendChild(img);
+            requestAnimationFrame(() => { img.style.transform = 'scale(1)'; });
+        }
+    }
+
+    function spawnFloatingText(text, x, y, sizeEm=1.0, color='white') {
+        const el = document.createElement('div'); el.className = 'floating-text';
+        el.innerText = text; el.style.left = x + '%'; el.style.top = y + '%';
+        el.style.color = color; el.style.fontSize = sizeEm + 'vw';
+        document.getElementById('game-container').appendChild(el);
+        setTimeout(() => el.remove(), 1500);
+    }
+    
+    init();
+</script>
+
+</body>
+</html>

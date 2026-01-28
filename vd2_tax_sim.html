@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>VD2 Steuersystem Simulation</title>
+    <style>
+        body { margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; background: #222; color: #eee; display: flex; height: 100vh; overflow: hidden; }
+        
+	/* SVG Overlay Anpassung */
+        #connections {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 10;
+            /* Damit die Linien scharf sind */
+            shape-rendering: geometricPrecision; 
+        }
+        
+        /* Basis-Stil für die Pfade */
+        polyline { 
+            fill: none;
+            stroke: rgba(255, 255, 255, 0.3); 
+            stroke-width: 2; 
+            stroke-linejoin: round;
+            stroke-linecap: round;
+            transition: stroke 0.5s, stroke-width 0.3s, filter 0.3s;
+        }
+        
+        /* Aktive Linie (Erobert -> Asgar) */
+        polyline.active {
+            stroke: #0f0; /* Hellgrün */
+            stroke-width: 3;
+            filter: drop-shadow(0 0 5px #0f0); /* Neon Glow */
+            stroke-dasharray: 10;
+            animation: dash 1s linear infinite; /* Optional: Fließender Strom-Effekt */
+        }
+        
+        @keyframes dash {
+            to { stroke-dashoffset: -20; }
+        }
+
+        #controls {
+            width: 320px;
+            background: #333;
+            border-right: 2px solid #555;
+            padding: 20px;
+            overflow-y: auto;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.5);
+            z-index: 100;
+        }
+        h2, h3 { color: #f0c040; margin-top: 0; text-shadow: 1px 1px 2px black; }
+        .control-group { margin-bottom: 20px; background: #444; padding: 10px; border-radius: 5px; }
+        label { display: block; margin-bottom: 5px; font-size: 14px; }
+        input[type=range] { width: 100%; }
+        .val-display { float: right; color: #aaa; font-size: 12px; }
+        
+        #map-container {
+            flex-grow: 1;
+            position: relative;
+            background-color: #000;
+            overflow: hidden;
+        }
+        
+        #world-map {
+            width: 100%;
+            height: 100%;
+            object-fit: fill; 
+            position: absolute;
+            top: 0; left: 0;
+            opacity: 0.8; 
+        }
+
+        #connections {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+        line { stroke: rgba(255, 255, 255, 0.5); stroke-width: 3; stroke-dasharray: 6; filter: drop-shadow(1px 1px 1px black); }
+        
+        .castle-btn {
+            position: absolute;
+            width: 8.3%;        
+            height: 6.5%;       
+            font-size: 0.85vw; 
+            background: rgba(255, 0, 0, 0.15);
+            border: 0.15vw solid rgba(255, 50, 50, 0.8);
+            border-radius: 8px;
+            cursor: pointer;
+            z-index: 20;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            line-height: 1.1;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px black, 0 0 5px black;
+            color: white;
+            box-shadow: 0 0 0.5vw rgba(0,0,0,0.5);
+            transform: translate(-50%, -50%); 
+        }
+        
+        .castle-btn:hover { transform: translate(-50%, -50%) scale(1.1); background: rgba(255,0,0,0.3); }
+        .castle-btn.owned {
+            background: rgba(0, 255, 0, 0.15);
+            border-color: rgba(50, 255, 50, 0.8);
+            color: #afa;
+        }
+        .castle-btn.owned:hover { background: rgba(0, 255, 0, 0.3); }
+
+        /* GOLD PILE CONTAINER */
+                /* CSS ÄNDERUNGEN */
+        
+        /* Container sitzt jetzt FEST oberhalb von Asgars Schloss */
+        #gold-pile-container {
+            position: absolute;
+            /* Asgars Schloss ist bei ca. left: 57%, top: 59% */
+            /* Wir starten 15% höher -> top: 44% */
+            top: 44%; 
+            left: 57%; 
+            width: 0; height: 0; /* Nur ein Ankerpunkt */
+            z-index: 25;
+            pointer-events: none;
+            /* Debug-Border zum Testen der Position (nachher entfernen) */
+            /* border: 1px solid red; */
+        }
+        
+        .gold-item {
+            position: absolute;
+            width: 2.5vw; /* Relative Größe zum Fenster */
+            height: auto;
+            
+            /* Startpunkt (wird per JS überschrieben) */
+            left: 0; top: 0; 
+            
+            transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); /* Bouncig */
+            filter: drop-shadow(2px 2px 2px rgba(0,0,0,0.5));
+            
+            /* Wenn du das PNG hast, brauchst du keinen mix-blend-mode mehr */
+        }
+
+
+        #gold-count-display {
+            position: absolute;
+            top: 65%; left: 57%; 
+            transform: translate(-50%, 0);
+            pointer-events: none;
+            z-index: 30;
+            font-size: 1.5vw;
+            color: gold;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px #000;
+        }
+        
+        #tick-bar-container {
+            position: absolute;
+            bottom: 20px; left: 340px; right: 20px;
+            height: 20px;
+            background: #222;
+            border: 1px solid #555;
+            border-radius: 10px;
+            overflow: hidden;
+            z-index: 50;
+        }
+        #tick-progress {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #555, #f0c040);
+            transition: width 0.1s linear;
+        }
+        #tick-text {
+            position: absolute;
+            width: 100%;
+            text-align: center;
+            top: 0; left: 0;
+            font-size: 12px;
+            line-height: 20px;
+            color: white;
+            text-shadow: 1px 1px 1px black;
+        }
+        
+        .floating-text {
+            position: absolute;
+            color: gold;
+            font-weight: bold;
+            font-size: 1.2vw;
+            text-shadow: 1px 1px 0 #000;
+            pointer-events: none;
+            animation: floatUp 1.5s ease-out forwards;
+            z-index: 40;
+            transform: translate(-50%, -50%);
+        }
+        @keyframes floatUp {
+            0% { transform: translate(-50%, -50%); opacity: 1; }
+            100% { transform: translate(-50%, -8vh); opacity: 0; }
+        }
+
+    </style>
+</head>
+<body>
+
+<div id="controls">
+    <h2>VD2 Steuer Sim</h2>
+    
+    <div class="control-group">
+        <h3>Spiel-Status</h3>
+        <p>Gesamtvermögen: <span id="total-wealth" style="color:gold">0</span> Filar</p>
+        <button onclick="resetSim()" style="width:100%; padding: 5px;">Reset</button>
+    </div>
+
+    <div class="control-group">
+        <h3>Einstellungen</h3>
+        <label>Schwierigkeit:</label>
+        <label><input type="radio" name="difficulty" value="easy" onchange="updateDifficulty()"> Leicht (Faktor 9)</label>
+        <label><input type="radio" name="difficulty" value="normal" checked onchange="updateDifficulty()"> Normal (Faktor 8)</label>
+        <label><input type="radio" name="difficulty" value="hard" onchange="updateDifficulty()"> Schwer (Faktor 6)</label>
+        
+        <br>
+        <label>Tick-Speed (ms): <span id="speed-disp" class="val-display">50</span></label>
+        <input type="range" id="sim-speed" min="10" max="200" value="50" oninput="updateSpeed(this.value)">
+        <small style="color:#888;">Niedriger = Schneller</small>
+    </div>
+    
+    <div class="control-group">
+        <h3>Skills & Malus</h3>
+        <label>Schatzmeister Level:</label>
+        <select id="skill-level" style="width:100%">
+            <option value="0">Keiner (100%)</option>
+            <option value="1">Level 1 (110%)</option>
+            <option value="2">Level 2 (125%)</option>
+            <option value="3">Level 3 (150%)</option>
+        </select>
+        
+        <br><br>
+        <label>Unruhe (ErobernMALUS): <span id="malus-disp" class="val-display">0</span></label>
+        <input type="range" id="malus-slider" min="0" max="10" value="0" oninput="updateMalus(this.value)">
+        <small id="malus-text" style="color:red; display:block; height:1.2em;"></small>
+    </div>
+    
+    <div class="control-group">
+        <h3>Einwohnerzahlen</h3>
+        <div id="population-sliders"></div>
+    </div>
+</div>
+
+<div id="map-container">
+    <img id="world-map" src="Weltkarte-mit-Dorfern-und-Schlossern.jpg" alt="Weltkarte">
+    
+    <svg id="connections" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+
+    <div id="castle-layer"></div>
+    
+    <!-- Container für die Goldhaufen -->
+    <div id="gold-pile-container"></div>
+    
+    <!-- Text Anzeige -->
+    <div id="gold-count-display">+0</div>
+    
+    <div id="tick-bar-container">
+        <div id="tick-progress"></div>
+        <div id="tick-text">Timer: 0 / 130</div>
+    </div>
+</div>
+
+<script>
+    /* 
+       UPDATED KONFIGURATION
+    */
+    
+// ASGARS SCHLOSS KOORDINATEN (Ziel für eroberte Burgen)
+    // ID 133: Syrahs/Asgars Schloss -> x: 57.7, y: 59.4
+    const ASGAR_X = 57.7;
+    const ASGAR_Y = 59.4;
+
+    const castles = [
+        { id: 131, popVar: 618, initPop: 18, name: "Genos\nHoran",          x: 33.3, y: 18.2, vx: 27.0, vy: 24.0 }, 
+        { id: 130, popVar: 621, initPop: 17, name: "Ordun\nArdos",          x: 17.7, y: 33.4, vx: 19.5, vy: 41.5 }, 
+        { id: 129, popVar: 619, initPop: 22, name: "Mesdor\nWharis",        x: 36.0, y: 60.0, vx: 25.0, vy: 66.0 }, 
+        { id: 135, popVar: 626, initPop: 33, name: "Jhalum\nFaryn",         x: 37.6, y: 89.0, vx: 32.5, vy: 88.0 }, 
+        { id: 133, popVar: 622, initPop: 20, name: "Syrahs\nAsgars Schloss",x: 57.7, y: 59.4, vx: 53.0, vy: 64.0 }, 
+        { id: 127, popVar: 625, initPop: 26, name: "Mirana\nJohlar",        x: 59.4, y: 78.4, vx: 69.5, vy: 81.0 }, 
+        { id: 128, popVar: 623, initPop: 18, name: "Ghardon\nRakar",        x: 68.3, y: 28.7, vx: 64.0, vy: 20.0 }, 
+        { id: 134, popVar: 624, initPop: 20, name: "Ildan\nRonom",          x: 82.1, y: 34.6, vx: 83.0, vy: 43.0 }, 
+        { id: 132, popVar: 620, initPop: 34, name: "Erena\nZharas",         x: 88.0, y: 63.0, vx: 92.0, vy: 72.0 }, 
+    ];
+    
+    let state = {
+        goldImSchloss: 0,
+        timer: 0,
+        goldFaktor: 8,
+        difficulty: 'normal',
+        ownedCastles: {},
+        population: {},
+        malus: 0,
+        skill: 0,
+        goldPiles: 0 // Zählt wie viele Goldhaufen schon dargestellt sind
+    };
+    
+    let intervalId = null;
+    let tickSpeed = 50;
+
+    function init() {
+        const castleLayer = document.getElementById('castle-layer');
+        const popSliders = document.getElementById('population-sliders');
+        const connections = document.getElementById('connections');
+        
+        castles.forEach(c => {
+            state.ownedCastles[c.id] = false;
+            state.population[c.popVar] = c.initPop; 
+            
+            // Button
+            const btn = document.createElement('div');
+            btn.className = 'castle-btn';
+            btn.style.left = c.x + '%';
+            btn.style.top = c.y + '%';
+            btn.innerText = c.name; 
+            btn.onclick = () => toggleCastle(c.id, btn);
+            btn.id = 'btn-' + c.id;
+            castleLayer.appendChild(btn);
+            
+            // Slider: 0 bis Startwert*4
+            const maxVal = c.initPop;
+            const div = document.createElement('div');
+            div.innerHTML = `
+                <label>${c.name.replace('\n', '/')} (Pop): <span id="disp-${c.popVar}" class="val-display">${c.initPop}</span></label>
+                <input type="range" min="0" max="${maxVal}" step="1" value="${c.initPop}" 
+                       oninput="updatePop(${c.popVar}, this.value)">
+            `;
+            popSliders.appendChild(div);
+            
+            // Linie
+             const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+            poly.id = 'line-' + c.id;
+            
+            // Initiale Verbindung: Schloss -> Dorf
+            const points = calculatePath(c.x, c.y, c.vx, c.vy);
+            poly.setAttribute('points', points);
+            
+            connections.appendChild(poly);
+        });
+        
+        startLoop();
+    }
+    function updateConnection(id) {
+        const c = castles.find(obj => obj.id === id);
+        const poly = document.getElementById('line-' + c.id);
+        
+        if (state.ownedCastles[id]) {
+            // EROBERT: Verbindung zu Asgars Schloss
+            // Sonderfall: Asgars Schloss selbst (ID 133) braucht keine Linie zu sich selbst
+            if (c.id === 133) {
+                poly.style.display = 'none'; // Oder zum Dorf lassen, Geschmackssache
+                return;
+            }
+            
+            const points = calculatePath(c.x, c.y, ASGAR_X, ASGAR_Y);
+            poly.setAttribute('points', points);
+            poly.classList.add('active'); // Grüner Glow
+        } else {
+            // FEINDLICH: Verbindung zum lokalen Dorf
+            const points = calculatePath(c.x, c.y, c.vx, c.vy);
+            poly.setAttribute('points', points);
+            poly.classList.remove('active');
+            poly.style.display = 'block';
+        }
+    }
+
+    function calculatePath(x1, y1, x2, y2) {
+        // Wir arbeiten in Prozent (0-100), das SVG skaliert das automatisch,
+        // da viewBox nicht gesetzt ist (Standard Pixel), müssen wir aufpassen.
+        // BESSER: Wir lassen calculatePath Prozentwerte zurückgeben 
+        // und nutzen vector-effect oder fixe SVG Größe.
+        // Einfachster Fix: Wir rechnen Prozent in Koordinaten um, 
+        // aber da die Linie im Overlay liegt, nehmen wir einfach an:
+        // Koordinaten sind 0-100. Wir hängen '%' an die Punkte nicht an (SVG mag das nicht in points="").
+        // TRICK: SVG viewBox="0 0 100 100" preserveAspectRatio="none" im HTML setzen!
+        
+        // BITTE im HTML Tag <svg id="connections"> folgendes Attribut ergänzen:
+        // viewBox="0 0 100 100" preserveAspectRatio="none"
+        
+        let dx = x2 - x1;
+        let dy = y2 - y1;
+        let points = [];
+        
+        points.push(`${x1},${y1}`); // Start
+        
+        // Einfacher L-Knick mit 45 Grad Fase wäre komplex.
+        // Einfacher "Octilinear" Weg:
+        // Erst Horizontal/Vertikal bis wir 45 Grad erreichen können? 
+        
+        // Simpler Ansatz für "Tech Look":
+        // Hälfte des Weges Horizontal, dann Diagonale, dann Rest Vertikal (oder umgekehrt).
+        
+        // Wir bauen: Start -> [Mitte X, Start Y] -> [Mitte X, Ziel Y] -> Ziel
+        // Das ist klassisch 90 Grad (Manhattan).
+        
+        // Für 45 Grad:
+        // Wir bewegen uns so weit horizontal, dass der Rest dx = dy ist (Quadrat).
+        // Abs(dx) - Abs(dy) ist die Strecke, die wir gerade gehen müssen.
+        
+        const adx = Math.abs(dx);
+        const ady = Math.abs(dy);
+        
+        let sx = (dx > 0) ? 1 : -1;
+        let sy = (dy > 0) ? 1 : -1;
+        
+        if (adx > ady) {
+            // Breiter als hoch -> Erst gerade horizontal, dann 45 Grad diagonal
+            const straightDist = adx - ady;
+            const midX = x1 + (straightDist * sx);
+            const midY = y1; // Noch auf gleicher Höhe
+            
+            points.push(`${midX},${midY}`);
+            // Von hier aus ist dx == dy, also direkte Diagonale zum Ziel
+        } else {
+            // Höher als breit -> Erst gerade vertikal
+            const straightDist = ady - adx;
+            const midX = x1;
+            const midY = y1 + (straightDist * sy);
+            
+            points.push(`${midX},${midY}`);
+        }
+        
+        points.push(`${x2},${y2}`); // Ziel
+        
+        return points.join(" ");
+    }
+    
+    function toggleCastle(id, btn) {
+        state.ownedCastles[id] = !state.ownedCastles[id];
+        
+        if(state.ownedCastles[id]) {
+            btn.classList.add('owned');
+        } else {
+            btn.classList.remove('owned');
+        }
+        
+        // Linie aktualisieren!
+        updateConnection(id);
+    }
+
+    function updatePop(varId, val) {
+        state.population[varId] = parseInt(val);
+        document.getElementById(`disp-${varId}`).innerText = val;
+    }
+    
+    function updateDifficulty() {
+        const radios = document.getElementsByName('difficulty');
+        for(let r of radios) { if(r.checked) state.difficulty = r.value; }
+        if(state.difficulty === 'easy') state.goldFaktor = 9;
+        else if(state.difficulty === 'normal') state.goldFaktor = 8;
+        else state.goldFaktor = 6;
+    }
+    
+    function updateSpeed(val) {
+        tickSpeed = parseInt(val);
+        document.getElementById('speed-disp').innerText = val;
+        startLoop();
+    }
+    
+    function updateMalus(val) {
+        state.malus = parseInt(val);
+        document.getElementById('malus-disp').innerText = val;
+        const txt = document.getElementById('malus-text');
+        const percent = 100 - (state.malus * 10);
+        
+        if (state.malus >= 9) txt.innerText = "BUG: 100% Einnahmen trotz Chaos!";
+        else if (percent < 20) txt.innerText = "Chaos! (0% Einnahmen)";
+        else txt.innerText = `Einnahmen auf ${percent}% reduziert.`;
+    }
+
+    function resetSim() {
+        state.goldImSchloss = 0;
+        state.timer = 0;
+        state.goldPiles = 0;
+        document.getElementById('total-wealth').innerText = 0;
+        document.getElementById('tick-progress').style.width = '0%';
+        document.getElementById('gold-count-display').innerText = "+0";
+        document.getElementById('gold-pile-container').innerHTML = ''; // Haufen löschen
+    }
+
+    function startLoop() {
+        if(intervalId) clearInterval(intervalId);
+        intervalId = setInterval(tick, tickSpeed);
+    }
+    
+    function tick() {
+        state.timer++;
+        const progress = Math.min(100, (state.timer / 130) * 100);
+        document.getElementById('tick-progress').style.width = progress + '%';
+        document.getElementById('tick-text').innerText = `Timer: ${state.timer} / 130`;
+        
+        if (state.timer >= 130) {
+            calculateTaxes();
+            state.timer = 0;
+        }
+    }
+    
+    function calculateTaxes() {
+        let cycleGold = 0;
+        
+        castles.forEach(c => {
+            if(state.ownedCastles[c.id]) {
+                const income = state.goldFaktor * state.population[c.popVar];
+                cycleGold += income;
+                spawnFloatingText(`+${income}`, c.x, c.y);
+            }
+        });
+        
+        const sLvl = parseInt(document.getElementById('skill-level').value);
+        if (sLvl === 1) cycleGold = Math.floor(cycleGold * 1.10);
+        if (sLvl === 2) cycleGold = Math.floor(cycleGold * 1.25);
+        if (sLvl === 3) cycleGold = Math.floor(cycleGold * 1.50);
+        
+        const malusPercent = 100 - (state.malus * 10);
+        if (malusPercent >= 20) cycleGold = Math.floor((cycleGold * malusPercent) / 100);
+        
+        state.goldImSchloss += cycleGold;
+        
+        document.getElementById('total-wealth').innerText = state.goldImSchloss.toLocaleString();
+        document.getElementById('gold-count-display').innerText = "+" + cycleGold;
+        
+        // Floating Text beim zentralen Goldhaufen
+        if(cycleGold > 0) {
+            spawnFloatingText(`+${cycleGold}`, 57, 59, 'gold', 30);
+            updateGoldPile();
+        }
+    }
+    
+    function updateGoldPile() {
+        // ÄNDERUNG: Math.ceil statt Math.floor
+        // Wenn goldImSchloss 0 ist, bleibt es 0.
+        // Wenn goldImSchloss 1 ist, wird es 1 (erstes Bild).
+        let targetPiles = 0;
+        if (state.goldImSchloss > 0) {
+            targetPiles = Math.ceil(state.goldImSchloss / 1000);
+        }
+
+        const container = document.getElementById('gold-pile-container');
+        
+        // Konstanten für das Grid
+        const COLS = 6;
+        const X_OFFSET = 2.0; 
+        const Y_OFFSET = 1.5; 
+        
+        const START_X = -(COLS * X_OFFSET) / 2;
+        
+        while (state.goldPiles < targetPiles && state.goldPiles < 100) {
+            const index = state.goldPiles;
+            state.goldPiles++;
+            
+            const img = document.createElement('img');
+            img.src = 'gold_icon.png'; 
+            img.className = 'gold-item';
+            
+            const row = Math.floor(index / COLS);
+            const col = index % COLS;
+            
+            const xPos = START_X + (col * X_OFFSET); 
+            const yPos = 0 - (row * Y_OFFSET);
+            
+            img.style.left = xPos + 'vw';
+            img.style.top = yPos + 'vw';
+            
+            img.style.transform = 'scale(0)';
+            container.appendChild(img);
+            
+            requestAnimationFrame(() => {
+                img.style.transform = 'scale(1)';
+            });
+        }
+    }
+
+
+    function spawnFloatingText(text, x, y, color='white', size=14) {
+        const el = document.createElement('div');
+        el.className = 'floating-text';
+        el.innerText = text;
+        el.style.left = x + '%';
+        el.style.top = y + '%';
+        el.style.color = color;
+        el.style.fontSize = (typeof size === 'number' ? size + 'px' : size); 
+        document.getElementById('map-container').appendChild(el);
+        setTimeout(() => el.remove(), 1500);
+    }
+    
+    init();
+    
+</script>
+
+</body>
+</html>
