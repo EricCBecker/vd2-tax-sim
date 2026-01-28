@@ -8,8 +8,7 @@ A comprehensive, interactive web tool to simulate and visualize the tax and econ
 
 This tool allows players to calculate potential income based on castle population, difficulty settings, and skills, visualized with dynamic resource paths and real-time gold accumulation.
 
-![Screenshot](screenshot.jpg)
-*(Note: Add a screenshot of your running app here named screenshot.jpg)*
+![Vorschau der Simulation](Screenshot.png)
 
 ## ✨ Features
 
